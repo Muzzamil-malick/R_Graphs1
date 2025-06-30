@@ -80,6 +80,8 @@ with st.sidebar:
             show_legend = st.checkbox("Show Legend", value=True)
             if show_legend:
                 legend_position = st.selectbox("Legend Position", ["top", "bottom", "left", "right"], index=0)
+            else:
+                legend_position = None
 
             # Scatter plot options
             if chart_type == "Scatter":
@@ -91,13 +93,17 @@ with st.sidebar:
                                         min_value=float(df[y_var].min()), 
                                         max_value=float(df[y_var].max()), 
                                         value=(float(df[y_var].min()), float(df[y_var].max())))
+                else:
+                    y_range = None
+            else:
+                point_size = None
+                point_shape = None
+                y_range = None
 
             # Color picker
             st.header("Color Picker")
             if legend_filter:
-                colors = {}
-                for cat in legend_filter:
-                    colors[cat] = st.color_picker(f"Color for {cat}", value="#FF0000")
+                colors = {cat: st.color_picker(f"Color for {cat}", value="#FF0000") for cat in legend_filter}
             else:
                 colors = {}
 
@@ -118,19 +124,20 @@ with st.sidebar:
             st.session_state["facet_var"] = facet_var
             st.session_state["facet_type"] = facet_type
             st.session_state["show_legend"] = show_legend
-            st.session_state["legend_position"] = legend_position if show_legend else None
+            st.session_state["legend_position"] = legend_position
             st.session_state["colors"] = colors
-            if chart_type == "Scatter":
-                st.session_state["point_size"] = point_size
-                st.session_state["point_shape"] = point_shape
-                if pd.api.types.is_numeric_dtype(df[y_var]):
-                    st.session_state["y_range"] = y_range
+            st.session_state["point_size"] = point_size
+            st.session_state["point_shape"] = point_shape
+            st.session_state["y_range"] = y_range
 
         except Exception as e:
             st.error(f"Error reading file: {str(e)}")
 
 # Main panel
-if "df" in st.session_state:
+required_keys = ["df", "x_var", "y_var", "legend_var", "time_filter", "chart_type", 
+                 "legend_filter", "alpha", "data_label_size", "x_label_size", 
+                 "y_label_size", "facet_var", "facet_type", "show_legend", "colors"]
+if all(key in st.session_state for key in required_keys):
     df = st.session_state["df"]
     x_var = st.session_state["x_var"]
     y_var = st.session_state["y_var"]
@@ -148,6 +155,9 @@ if "df" in st.session_state:
     show_legend = st.session_state["show_legend"]
     legend_position = st.session_state["legend_position"]
     colors = st.session_state["colors"]
+    point_size = st.session_state.get("point_size")
+    point_shape = st.session_state.get("point_shape")
+    y_range = st.session_state.get("y_range")
 
     # Data processing
     plot_df = df.copy()
@@ -163,11 +173,11 @@ if "df" in st.session_state:
                               (plot_df[x_var] <= pd.to_datetime(date_range[1]))]
 
     # Apply legend filter
-    plot_df = plot_df[plot_df[legend_var].isin(legend_filter)]
+    if legend_filter:
+        plot_df = plot_df[plot_df[legend_var].isin(legend_filter)]
 
     # Apply y-axis filter for scatter
-    if chart_type == "Scatter" and pd.api.types.is_numeric_dtype(plot_df[y_var]) and "y_range" in st.session_state:
-        y_range = st.session_state["y_range"]
+    if chart_type == "Scatter" and pd.api.types.is_numeric_dtype(plot_df[y_var]) and y_range:
         plot_df = plot_df[(plot_df[y_var] >= y_range[0]) & (plot_df[y_var] <= y_range[1])]
 
     # Prepare data for count/proportion
@@ -239,9 +249,9 @@ if "df" in st.session_state:
                 plot_df, x=x_var, y=y_var, color=legend_var,
                 opacity=alpha,
                 title=st.session_state["title"],
-                size=[st.session_state["point_size"]] * len(plot_df),
+                size=[point_size] * len(plot_df) if point_size else None,
                 symbol=legend_var,
-                symbol_map={cat: st.session_state["point_shape"] for cat in legend_filter},
+                symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None,
                 labels={x_var: x_var, y_var: y_var}
             )
 
@@ -261,8 +271,8 @@ if "df" in st.session_state:
                              facet_row=facet_var, opacity=alpha)
                 if chart_type == "Scatter":
                     fig = px.scatter(plot_df, x=x_var, y=y_var, color=legend_var, facet_row=facet_var,
-                                     opacity=alpha, size=[st.session_state["point_size"]] * len(plot_df),
-                                     symbol=legend_var, symbol_map={cat: st.session_state["point_shape"] for cat in legend_filter})
+                                     opacity=alpha, size=[point_size] * len(plot_df) if point_size else None,
+                                     symbol=legend_var, symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None)
             else:  # Wrap
                 fig = px.bar(plot_df, x="TimeUnit" if chart_type in ["Count", "Proportion"] else x_var,
                              y="Count" if chart_type == "Count" else "Proportion" if chart_type == "Proportion" else y_var,
@@ -270,8 +280,8 @@ if "df" in st.session_state:
                              facet_col=facet_var, facet_col_wrap=3, opacity=alpha)
                 if chart_type == "Scatter":
                     fig = px.scatter(plot_df, x=x_var, y=y_var, color=legend_var, facet_col=facet_var, facet_col_wrap=3,
-                                     opacity=alpha, size=[st.session_state["point_size"]] * len(plot_df),
-                                     symbol=legend_var, symbol_map={cat: st.session_state["point_shape"] for cat in legend_filter})
+                                     opacity=alpha, size=[point_size] * len(plot_df) if point_size else None,
+                                     symbol=legend_var, symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None)
 
             # Reapply colors for faceted plots
             for trace in fig.data:
@@ -311,3 +321,5 @@ if "df" in st.session_state:
             file_name=f"plot-{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
             mime="image/jpeg"
         )
+else:
+    st.info("Please upload a CSV or Excel file to begin.")
