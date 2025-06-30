@@ -18,14 +18,18 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload CSV or Excel File", type=["csv", "xlsx", "xls"])
 
     if uploaded_file:
-        # Read file based on extension
+        # Read file
         try:
             if uploaded_file.name.endswith(".csv"):
                 df = pd.read_csv(uploaded_file)
             else:
                 df = pd.read_excel(uploaded_file)
+        except Exception as e:
+            st.error(f"Error reading file: {str(e)}")
+            st.stop()
 
-            # Date parsing
+        # Date parsing
+        try:
             date_cols = ["date", "onsetdate", "specdate", "DateEnter", "Year"]
             for col in date_cols:
                 if col in df.columns:
@@ -33,10 +37,15 @@ with st.sidebar:
                         df[col] = pd.to_datetime(df[col], errors="coerce")
                     elif df[col].dtype in ["int64", "float64"] and col == "Year":
                         df[col] = pd.to_datetime(df[col].astype(str) + "-01-01", format="%Y-%m-%d")
+        except Exception as e:
+            st.error(f"Error parsing dates: {str(e)}")
+            st.stop()
 
-            # Store data in session state
-            st.session_state["df"] = df
+        # Store data in session state
+        st.session_state["df"] = df
 
+        # Sidebar UI
+        try:
             # Column selection
             all_cols = df.columns.tolist()
             st.header("Graph Options")
@@ -66,9 +75,9 @@ with st.sidebar:
 
             # Text size options
             st.header("Text Size Options")
-            data_label_size = st.slider("Data Label Text Size", min_value=1, max_value=10, value=3, step=0.5)
-            x_label_size = st.slider("X-Axis Label Text Size", min_value=5, max_value=20, value=10, step=1)
-            y_label_size = st.slider("Y-Axis Label Text Size", min_value=5, max_value=20, value=10, step=1)
+            data_label_size = st.slider("Data Label Text Size", min_value=1.0, max_value=10.0, value=3.0, step=0.5)
+            x_label_size = st.slider("X-Axis Label Text Size", min_value=5.0, max_value=20.0, value=10.0, step=1.0)
+            y_label_size = st.slider("Y-Axis Label Text Size", min_value=5.0, max_value=20.0, value=10.0, step=1.0)
 
             # Facet options
             st.header("Facet Options")
@@ -86,7 +95,7 @@ with st.sidebar:
             # Scatter plot options
             if chart_type == "Scatter":
                 st.header("Scatter Plot Options")
-                point_size = st.slider("Point Size", min_value=1, max_value=10, value=3, step=0.5)
+                point_size = st.slider("Point Size", min_value=1.0, max_value=10.0, value=3.0, step=0.5)
                 point_shape = st.selectbox("Point Shape", ["circle", "triangle-up", "square", "diamond"], index=0)
                 if pd.api.types.is_numeric_dtype(df[y_var]):
                     y_range = st.slider("Y-Axis Numeric Range", 
@@ -131,7 +140,8 @@ with st.sidebar:
             st.session_state["y_range"] = y_range
 
         except Exception as e:
-            st.error(f"Error reading file: {str(e)}")
+            st.error(f"Error in sidebar configuration: {str(e)}")
+            st.stop()
 
 # Main panel
 required_keys = ["df", "x_var", "y_var", "legend_var", "time_filter", "chart_type", 
@@ -194,132 +204,135 @@ if all(key in st.session_state for key in required_keys):
             plot_df["Proportion"] = plot_df.groupby("TimeUnit")["Count"].transform(lambda x: x / x.sum())
 
     # Plotting
-    if len(plot_df) == 0:
-        st.warning("No data available for the selected filters.")
-    else:
-        # Define color map
-        color_map = {cat: colors.get(cat, "#FF0000") for cat in legend_filter}
+    try:
+        if len(plot_df) == 0:
+            st.warning("No data available for the selected filters.")
+        else:
+            # Define color map
+            color_map = {cat: colors.get(cat, "#FF0000") for cat in legend_filter}
 
-        # Create plot
-        if chart_type == "Count":
-            fig = px.bar(
-                plot_df, x="TimeUnit", y="Count", color=legend_var,
-                barmode="stack", opacity=alpha,
-                title=st.session_state["title"],
-                labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year", "Count": "Count"}
-            )
-            # Add data labels
-            for cat in legend_filter:
-                cat_df = plot_df[plot_df[legend_var] == cat]
-                fig.add_trace(
-                    go.Scatter(
-                        x=cat_df["TimeUnit"],
-                        y=cat_df["Count"],
-                        text=[str(int(c)) if c > 0 else "" for c in cat_df["Count"]],
-                        mode="text",
-                        textposition="middle center",
-                        textfont=dict(size=data_label_size * 4),
-                        showlegend=False
-                    )
+            # Create plot
+            if chart_type == "Count":
+                fig = px.bar(
+                    plot_df, x="TimeUnit", y="Count", color=legend_var,
+                    barmode="stack", opacity=alpha,
+                    title=st.session_state["title"],
+                    labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year", "Count": "Count"}
                 )
-        elif chart_type == "Proportion":
-            fig = px.bar(
-                plot_df, x="TimeUnit", y="Proportion", color=legend_var,
-                barmode="stack", opacity=alpha,
-                title=st.session_state["title"],
-                labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year", "Proportion": "Proportion"}
-            )
-            fig.update_yaxes(tickformat=".0%")
-            # Add data labels
-            for cat in legend_filter:
-                cat_df = plot_df[plot_df[legend_var] == cat]
-                fig.add_trace(
-                    go.Scatter(
-                        x=cat_df["TimeUnit"],
-                        y=cat_df["Proportion"],
-                        text=[f"{int(p * 100)}%" if p > 0 else "" for p in cat_df["Proportion"]],
-                        mode="text",
-                        textposition="middle center",
-                        textfont=dict(size=data_label_size * 4),
-                        showlegend=False
+                # Add data labels
+                for cat in legend_filter:
+                    cat_df = plot_df[plot_df[legend_var] == cat]
+                    fig.add_trace(
+                        go.Scatter(
+                            x=cat_df["TimeUnit"],
+                            y=cat_df["Count"],
+                            text=[str(int(c)) if c > 0 else "" for c in cat_df["Count"]],
+                            mode="text",
+                            textposition="middle center",
+                            textfont=dict(size=data_label_size * 4),
+                            showlegend=False
+                        )
                     )
+            elif chart_type == "Proportion":
+                fig = px.bar(
+                    plot_df, x="TimeUnit", y="Proportion", color=legend_var,
+                    barmode="stack", opacity=alpha,
+                    title=st.session_state["title"],
+                    labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year", "Proportion": "Proportion"}
                 )
-        else:  # Scatter
-            fig = px.scatter(
-                plot_df, x=x_var, y=y_var, color=legend_var,
-                opacity=alpha,
-                title=st.session_state["title"],
-                size=[point_size] * len(plot_df) if point_size else None,
-                symbol=legend_var,
-                symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None,
-                labels={x_var: x_var, y_var: y_var}
-            )
+                fig.update_yaxes(tickformat=".0%")
+                # Add data labels
+                for cat in legend_filter:
+                    cat_df = plot_df[plot_df[legend_var] == cat]
+                    fig.add_trace(
+                        go.Scatter(
+                            x=cat_df["TimeUnit"],
+                            y=cat_df["Proportion"],
+                            text=[f"{int(p * 100)}%" if p > 0 else "" for p in cat_df["Proportion"]],
+                            mode="text",
+                            textposition="middle center",
+                            textfont=dict(size=data_label_size * 4),
+                            showlegend=False
+                        )
+                    )
+            else:  # Scatter
+                fig = px.scatter(
+                    plot_df, x=x_var, y=y_var, color=legend_var,
+                    opacity=alpha,
+                    title=st.session_state["title"],
+                    size=[point_size] * len(plot_df) if point_size else None,
+                    symbol=legend_var,
+                    symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None,
+                    labels={x_var: x_var, y_var: y_var}
+                )
 
-        # Apply colors
-        for trace in fig.data:
-            if trace.name in color_map:
-                trace.marker.color = color_map[trace.name]
-                if chart_type == "Scatter":
-                    trace.marker.line.color = color_map[trace.name]
-
-        # Faceting
-        if facet_var != "None" and facet_var in plot_df.columns:
-            if facet_type == "Grid":
-                fig = px.bar(plot_df, x="TimeUnit" if chart_type in ["Count", "Proportion"] else x_var,
-                             y="Count" if chart_type == "Count" else "Proportion" if chart_type == "Proportion" else y_var,
-                             color=legend_var, barmode="stack" if chart_type in ["Count", "Proportion"] else None,
-                             facet_row=facet_var, opacity=alpha)
-                if chart_type == "Scatter":
-                    fig = px.scatter(plot_df, x=x_var, y=y_var, color=legend_var, facet_row=facet_var,
-                                     opacity=alpha, size=[point_size] * len(plot_df) if point_size else None,
-                                     symbol=legend_var, symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None)
-            else:  # Wrap
-                fig = px.bar(plot_df, x="TimeUnit" if chart_type in ["Count", "Proportion"] else x_var,
-                             y="Count" if chart_type == "Count" else "Proportion" if chart_type == "Proportion" else y_var,
-                             color=legend_var, barmode="stack" if chart_type in ["Count", "Proportion"] else None,
-                             facet_col=facet_var, facet_col_wrap=3, opacity=alpha)
-                if chart_type == "Scatter":
-                    fig = px.scatter(plot_df, x=x_var, y=y_var, color=legend_var, facet_col=facet_var, facet_col_wrap=3,
-                                     opacity=alpha, size=[point_size] * len(plot_df) if point_size else None,
-                                     symbol=legend_var, symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None)
-
-            # Reapply colors for faceted plots
+            # Apply colors
             for trace in fig.data:
                 if trace.name in color_map:
                     trace.marker.color = color_map[trace.name]
                     if chart_type == "Scatter":
                         trace.marker.line.color = color_map[trace.name]
 
-        # Update layout
-        fig.update_layout(
-            showlegend=show_legend,
-            legend=dict(orientation="h" if legend_position in ["top", "bottom"] else "v",
-                        y=1.1 if legend_position == "top" else -0.1 if legend_position == "bottom" else 0.5,
-                        x=0.5 if legend_position in ["top", "bottom"] else 1.02 if legend_position == "right" else -0.02,
-                        xanchor="center" if legend_position in ["top", "bottom"] else "left" if legend_position == "left" else "right",
-                        yanchor="top"),
-            xaxis_title_font=dict(size=x_label_size),
-            yaxis_title_font=dict(size=y_label_size),
-            xaxis_tickfont=dict(size=x_label_size),
-            yaxis_tickfont=dict(size=y_label_size),
-            title=dict(text=f"{st.session_state['title']}<br><sub>{st.session_state['subtitle']}</sub>", x=0.5, xanchor="center"),
-            height=600
-        )
+            # Faceting
+            if facet_var != "None" and facet_var in plot_df.columns:
+                if facet_type == "Grid":
+                    fig = px.bar(plot_df, x="TimeUnit" if chart_type in ["Count", "Proportion"] else x_var,
+                                 y="Count" if chart_type == "Count" else "Proportion" if chart_type == "Proportion" else y_var,
+                                 color=legend_var, barmode="stack" if chart_type in ["Count", "Proportion"] else None,
+                                 facet_row=facet_var, opacity=alpha)
+                    if chart_type == "Scatter":
+                        fig = px.scatter(plot_df, x=x_var, y=y_var, color=legend_var, facet_row=facet_var,
+                                         opacity=alpha, size=[point_size] * len(plot_df) if point_size else None,
+                                         symbol=legend_var, symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None)
+                else:  # Wrap
+                    fig = px.bar(plot_df, x="TimeUnit" if chart_type in ["Count", "Proportion"] else x_var,
+                                 y="Count" if chart_type == "Count" else "Proportion" if chart_type == "Proportion" else y_var,
+                                 color=legend_var, barmode="stack" if chart_type in ["Count", "Proportion"] else None,
+                                 facet_col=facet_var, facet_col_wrap=3, opacity=alpha)
+                    if chart_type == "Scatter":
+                        fig = px.scatter(plot_df, x=x_var, y=y_var, color=legend_var, facet_col=facet_var, facet_col_wrap=3,
+                                         opacity=alpha, size=[point_size] * len(plot_df) if point_size else None,
+                                         symbol=legend_var, symbol_map={cat: point_shape for cat in legend_filter} if point_shape else None)
 
-        if chart_type == "Proportion":
-            fig.update_yaxes(tickformat=".0%")
+                # Reapply colors for faceted plots
+                for trace in fig.data:
+                    if trace.name in color_map:
+                        trace.marker.color = color_map[trace.name]
+                        if chart_type == "Scatter":
+                            trace.marker.line.color = color_map[trace.name]
 
-        # Display plot
-        st.plotly_chart(fig, use_container_width=True)
+            # Update layout
+            fig.update_layout(
+                showlegend=show_legend,
+                legend=dict(orientation="h" if legend_position in ["top", "bottom"] else "v",
+                            y=1.1 if legend_position == "top" else -0.1 if legend_position == "bottom" else 0.5,
+                            x=0.5 if legend_position in ["top", "bottom"] else 1.02 if legend_position == "right" else -0.02,
+                            xanchor="center" if legend_position in ["top", "bottom"] else "left" if legend_position == "left" else "right",
+                            yanchor="top"),
+                xaxis_title_font=dict(size=x_label_size),
+                yaxis_title_font=dict(size=y_label_size),
+                xaxis_tickfont=dict(size=x_label_size),
+                yaxis_tickfont=dict(size=y_label_size),
+                title=dict(text=f"{st.session_state['title']}<br><sub>{st.session_state['subtitle']}</sub>", x=0.5, xanchor="center"),
+                height=600
+            )
 
-        # Download button
-        buffer = io.BytesIO()
-        fig.write_image(buffer, format="jpeg", width=1000, height=600)
-        st.download_button(
-            label="Download Plot",
-            data=buffer,
-            file_name=f"plot-{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
-            mime="image/jpeg"
-        )
+            if chart_type == "Proportion":
+                fig.update_yaxes(tickformat=".0%")
+
+            # Display plot
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Download button
+            buffer = io.BytesIO()
+            fig.write_image(buffer, format="jpeg", width=1000, height=600)
+            st.download_button(
+                label="Download Plot",
+                data=buffer,
+                file_name=f"plot-{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
+                mime="image/jpeg"
+            )
+    except Exception as e:
+        st.error(f"Error rendering plot: {str(e)}")
 else:
     st.info("Please upload a CSV or Excel file to begin.")
