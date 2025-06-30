@@ -54,7 +54,7 @@ with st.sidebar:
             x_var = st.selectbox("X-Axis Variable", all_cols, index=0)
             y_var = st.selectbox("Y-Axis Variable", all_cols, index=1 if len(all_cols) > 1 else 0)
             legend_var = st.selectbox("Legend Color Variable", all_cols, index=2 if len(all_cols) > 2 else 0)
-            time_filter = st.selectbox("Time Filter Granularity", ["Year", "Month"], index=0)
+            time_filter = st.selectbox("Time Filter Granularity", ["Year", "Month", "None"], index=2)
             chart_type = st.selectbox("Chart Type", ["Count", "Proportion", "Scatter"], index=0)
             
             # Date range filter for date x-axis
@@ -177,7 +177,7 @@ if all(key in st.session_state for key in required_keys):
         if time_filter == "Year":
             plot_df["Year"] = plot_df[x_var].dt.year
             plot_df = plot_df[(plot_df["Year"] >= date_range[0].year) & (plot_df["Year"] <= date_range[1].year)]
-        else:
+        elif time_filter == "Month":
             plot_df["Month"] = plot_df[x_var].dt.strftime("%Y-%m")
             plot_df = plot_df[(plot_df[x_var] >= pd.to_datetime(date_range[0])) & 
                               (plot_df[x_var] <= pd.to_datetime(date_range[1]))]
@@ -192,10 +192,12 @@ if all(key in st.session_state for key in required_keys):
 
     # Prepare data for count/proportion
     if chart_type in ["Count", "Proportion"]:
-        if time_filter == "Year":
+        if time_filter == "Year" and pd.api.types.is_datetime64_any_dtype(plot_df[x_var]):
             plot_df["TimeUnit"] = plot_df[x_var].dt.year
-        else:
+        elif time_filter == "Month" and pd.api.types.is_datetime64_any_dtype(plot_df[x_var]):
             plot_df["TimeUnit"] = plot_df[x_var].dt.strftime("%Y-%m")
+        else:
+            plot_df["TimeUnit"] = plot_df[x_var]  # Use raw x_var if not datetime or time_filter is None
 
         if chart_type == "Count":
             plot_df = plot_df.groupby(["TimeUnit", legend_var]).size().reset_index(name="Count")
@@ -217,7 +219,7 @@ if all(key in st.session_state for key in required_keys):
                     plot_df, x="TimeUnit", y="Count", color=legend_var,
                     barmode="stack", opacity=alpha,
                     title=st.session_state["title"],
-                    labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year", "Count": "Count"}
+                    labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year" if time_filter == "Month" else x_var, "Count": "Count"}
                 )
                 # Add data labels
                 for cat in legend_filter:
@@ -238,7 +240,7 @@ if all(key in st.session_state for key in required_keys):
                     plot_df, x="TimeUnit", y="Proportion", color=legend_var,
                     barmode="stack", opacity=alpha,
                     title=st.session_state["title"],
-                    labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year", "Proportion": "Proportion"}
+                    labels={"TimeUnit": "Year" if time_filter == "Year" else "Month-Year" if time_filter == "Month" else x_var, "Proportion": "Proportion"}
                 )
                 fig.update_yaxes(tickformat=".0%")
                 # Add data labels
@@ -333,6 +335,6 @@ if all(key in st.session_state for key in required_keys):
                 mime="image/jpeg"
             )
     except Exception as e:
-        st.error(f"Error rendering plot: {str(e)}")
+        st.error(f"Error rendering plot: {str(e)}. If using 'Year' or 'Month' time filter, ensure the x-axis variable is a datetime column.")
 else:
     st.info("Please upload a CSV or Excel file to begin.")
