@@ -4,7 +4,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import io
-import os
 from PIL import Image
 
 # Streamlit page configuration
@@ -31,7 +30,7 @@ with st.sidebar:
             for col in date_cols:
                 if col in df.columns:
                     if df[col].dtype in ["object", "string"]:
-                        df[col] = pd.to_datetime(df[col], errors="coerce", infer_datetime_format=True)
+                        df[col] = pd.to_datetime(df[col], errors="coerce")
                     elif df[col].dtype in ["int64", "float64"] and col == "Year":
                         df[col] = pd.to_datetime(df[col].astype(str) + "-01-01", format="%Y-%m-%d")
 
@@ -209,7 +208,7 @@ if "df" in st.session_state:
                         text=[str(int(c)) if c > 0 else "" for c in cat_df["Count"]],
                         mode="text",
                         textposition="middle center",
-                        textfont=dict(size=data_label_size * 4),  # Adjust for Plotly scaling
+                        textfont=dict(size=data_label_size * 4),
                         showlegend=False
                     )
                 )
@@ -312,5 +311,3 @@ if "df" in st.session_state:
             file_name=f"plot-{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg",
             mime="image/jpeg"
         )
-
-```
